@@ -50,7 +50,16 @@ async function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
+    transparent: true,
+    frame: false,
+    backgroundColor: 'rgba(0, 0, 0, 0)',
+    height: 200
   })
+
+  // 去除菜单栏 置顶 不可被截图
+  win.menuBarVisible = false
+  win.setAlwaysOnTop(true, 'screen-saver')
+  win.setContentProtection(true)
 
   if (app.isPackaged) {
     win.loadFile(indexHtml)
@@ -112,4 +121,16 @@ ipcMain.handle('open-win', (event, arg) => {
     childWindow.loadURL(`${url}#${arg}`)
     // childWindow.webContents.openDevTools({ mode: "undocked", activate: true })
   }
+})
+// 获取OCR数据
+ipcMain.on('ocr-send', (event, arg) => {
+  const axios = require('axios')
+  axios.post('http://localhost:8081/ocr/api', {
+    'ImagePath': arg,
+    'Language': 'JAP'
+  }).then(res => {
+    event.reply('ocr-reply', res.data)
+  }).catch(err => {
+    console.log(err)
+  })
 })
