@@ -131,6 +131,7 @@ ipcMain.on('ocr-send', (event, arg) => {
   }).then(res => {
     event.reply('ocr-reply', res.data)
   }).catch(err => {
+    event.reply('ocr-error')
     console.log(err)
   })
 })

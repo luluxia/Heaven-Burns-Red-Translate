@@ -13,11 +13,16 @@ const state = reactive({
   working: false,
   result: new Set(),
   bounds: { x: 0, y: 0, width: 0, height: 0 },
+  error: '',
 })
 // 导入文本数据
 let textData = [] as any[]
 const filePath = path.resolve('./data')
 fs.readdir(filePath, (err: any, files: any[]) => {
+  if (!files || !files.length) {
+    state.error = '未检测到译文数据，请在软件根目录添加data文件夹并放置译文数据，然后点击本窗口重试'
+    return
+  }
   files.forEach((file: string, index) => {
     jsonfile.readFile(filePath + '/' + file, (err: any, obj: any[]) => {
       textData = textData.concat(obj)
@@ -41,7 +46,16 @@ const ready = () => {
 onMounted(async () => {
   const window = windowManager.getWindows()
   const target = window.find((w: { path: string }) => w.path.includes('HeavenBurnsRed'))
+  if (!target) {
+    state.error = '未检测到游戏窗口，请打开游戏后点击本窗口重试'
+    return
+  }
   const bounds = target.getBounds()
+  if (bounds.x < 0 || bounds.y < 0) {
+    state.error = '获取游戏窗口位置失败，请保证游戏窗口可见并点击本窗口重试'
+    return
+  }
+  console.log(target)
   state.bounds = {
     x: bounds.x * 1.5,
     y: bounds.y * 1.5,
@@ -51,7 +65,9 @@ onMounted(async () => {
 })
 // 截图
 const takeScreenshot = () => {
+  console.log('准备截图')
   screenshot({filename: './output/shot.png'}).then(async (img: any) => {
+    console.log('截图完成' + img)
     const image = await Jimp.read(img)
     image.crop(state.bounds.x, state.bounds.y, state.bounds.width, state.bounds.height)
       .grayscale()
@@ -59,8 +75,11 @@ const takeScreenshot = () => {
       .normalize()
       .invert()
       .write('./output/shot-opt.png')
+    console.log('图片处理完成')
     setTimeout(() => {
+      console.log('开始识别')
       ipcRenderer.send('ocr-send', img.replace('shot', 'shot-opt'))
+      console.log('发送识别请求')
     }, 50)
   })
 }
@@ -90,6 +109,10 @@ ipcRenderer.on('ocr-reply', (_event, arg) => {
     takeScreenshot()
   }
 })
+// 获取OCR失败
+ipcRenderer.on('ocr-error', (_event, arg) => {
+  state.error = 'OCR识别失败，请确保团子OCR已启动，且端口号为8081，若确认无误，请尝试关闭所有团子OCR进程后重新打开，然后点击本窗口重试'
+})
 // 开关
 const changeWorking = () => {
   state.working = !state.working
@@ -97,15 +120,21 @@ const changeWorking = () => {
     takeScreenshot()
   }
 }
+const reload = () => {
+  location.reload()
+}
 </script>
 
 <template>
   <div class="drag"></div>
-  <div @click="changeWorking()" class="content">
+  <div v-if="!state.error" @click="changeWorking()" class="content">
     <p v-if="!state.working">开始运行</p>
     <div class="translate" v-else>
       <p v-for="item in state.result">{{item}}</p>
     </div>
+  </div>
+  <div v-else @click="reload()" class="content">
+    <p>{{state.error}}</p>
   </div>
 </template>
 
