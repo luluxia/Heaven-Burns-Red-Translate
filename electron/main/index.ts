@@ -125,7 +125,7 @@ ipcMain.handle('open-win', (event, arg) => {
 // 获取OCR数据
 ipcMain.on('ocr-send', (event, arg) => {
   const axios = require('axios')
-  axios.post('http://localhost:8081/ocr/api', {
+  axios.post('http://localhost:6666/ocr/api', {
     'ImagePath': arg,
     'Language': 'JAP'
   }).then(res => {
