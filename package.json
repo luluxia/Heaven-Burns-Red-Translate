@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build && electron-builder"
+    "build": "vite build && electron-builder"
   },
   "engines": {
     "node": "^14.18.0 || >=16.0.0"
@@ -41,6 +41,7 @@
     "fuse.js": "^6.6.2",
     "jimp": "^0.16.2",
     "jsonfile": "^6.1.0",
+    "node-cmd": "^5.0.0",
     "node-window-manager": "^2.2.4",
     "screenshot-desktop": "^1.12.7"
   }
