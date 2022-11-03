@@ -122,16 +122,3 @@ ipcMain.handle('open-win', (event, arg) => {
     // childWindow.webContents.openDevTools({ mode: "undocked", activate: true })
   }
 })
-// 获取OCR数据
-ipcMain.on('ocr-send', (event, arg) => {
-  const axios = require('axios')
-  axios.post('http://localhost:6666/ocr/api', {
-    'ImagePath': arg,
-    'Language': 'JAP'
-  }).then(res => {
-    event.reply('ocr-reply', res.data)
-  }).catch(err => {
-    event.reply('ocr-error')
-    console.log(err)
-  })
-})
