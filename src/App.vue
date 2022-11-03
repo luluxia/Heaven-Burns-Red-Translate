@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, onMounted, nextTick } from 'vue'
 import Fuse from 'fuse.js'
+import { it } from 'node:test';
 const fs = require('fs')
 const path = require('path')
 const Jimp = require('jimp')
