@@ -38,6 +38,7 @@ const exclude: string[] = [
   "茅森月歌",
   "和泉ユキ",
   "逢川めぐみ",
+  "逢川 めぐみ",
   "東城つかさ",
   "朝倉可憐",
   "カレン",
@@ -96,6 +97,11 @@ const exclude: string[] = [
   "AUTO OFF",
   "行く",
   "行かない",
+  "次の時間へ",
+  "國見",
+  "レ",
+  "タマ",
+  "て「",
 ]
 // 测试加密数据
 let textData = [] as string[]
@@ -144,7 +150,7 @@ let fuse: Fuse<any> | null = null
 const ready = () => {
   fuse = new Fuse(textData, {
     keys: ['ori'],
-    threshold: 0.4,
+    threshold: 0.5,
     distance: 20,
   })
 }
@@ -185,12 +191,36 @@ const takeScreenshot = () => {
       .write('./output/shot-opt.jpg')
     console.log('图片处理完成，开始识别')
     console.time('识别完成，耗时')
-    cmd.run(`.\\ocr\\RapidOcrOnnx.exe --models ocr/models --det ch_PP-OCRv3_det_infer.onnx --cls ch_ppocr_mobile_v2.0_cls_infer.onnx --rec model.onnx --keys japan_dict.txt --image output/shot-opt.jpg --numThread 16 --padding 50 --maxSideLen 1024 --boxScoreThresh 0.5 --boxThresh 0.3 --unClipRatio 1.6 --doAngle 0 --mostAngle 0 --GPU -1`,
-    (err: any, data: any, stderr: any) => {
+    const cmdData: { [key: string]: string } = {
+      models: 'ocr/models',
+      det: 'ch_PP-OCRv3_det_infer.onnx',
+      cls: 'ch_ppocr_mobile_v2.0_cls_infer.onnx',
+      rec: 'model.onnx',
+      keys: 'japan_dict.txt',
+      image: 'output/shot-opt.jpg',
+      numThread: '16',
+      padding: '50',
+      maxSideLen: '1024',
+      boxScoreThresh: '0.5',
+      boxThresh: '0.3',
+      unClipRatio: '1.6',
+      doAngle: '0',
+      mostAngle: '0',
+      GPU: '-1'
+    }
+    const cmdText = Object.keys(cmdData).map(key => `--${key} ${cmdData[key]}`).join(' ')
+    cmd.run(`.\\ocr\\RapidOcrOnnx.exe ${cmdText}`,(err: any, data: any, stderr: any) => {
       console.timeEnd('识别完成，耗时')
       let result = data.split('=====End detect=====')[1].split('\r\n').filter((item: string) => item != '')
       result.shift()
-      if (result.length >= 10) {
+      result = result.map((item: string) => ToCDB(item))
+      // 跳过非日文的文本
+      result = result.filter((item: string) => /[\u0800-\u4e00]+/.test(item))
+      // 跳过小于1个字符的文本
+      result = result.filter((item: string) => item.length > 2)
+      // 跳过排除项
+      result = result.filter((item: string) => !exclude.includes(item))
+      if (result.length >= 10 && state.result[state.result.length - 1]?.trans == 'OCR识别结果过多，因此跳过本次搜索') {
         state.result.push({
           ocr: '',
           ori: '',
@@ -199,24 +229,22 @@ const takeScreenshot = () => {
       } else {
         const merge = result.filter((item: string) => !exclude.includes(item)).join('')
         result.unshift(merge)
+        result = [...new Set(result)]
         result.forEach((item: string) => {
           if (!fuse) { return }
-          if (item.length <= 1) { return }
           const pushItem = { ocr: item, ori: '', trans: '' }
-          // 跳过排除项
-          if (exclude.includes(item)) { return }
           // 进行搜索
           const search = fuse.search(item, { limit: 1 })
           console.log('搜寻 ' + item)
           console.log(search)
           const searchResult = search[0]
           // 跳过搜索结果为空的项
-          // if (!search.length) { return }
+          if (!search.length) { return }
           // 跳过当前历史记录中已存在的项
           if (searchResult && state.result.some((r: any) => r.trans != '' && r.trans === searchResult.item.trans)) { return }
           if (state.result.some((r: any) => r.ocr === item)) { return }
           // 排除原文与译文差距过大的项
-          if (searchResult && item.length <= 5 && searchResult.item.ori.length >= 10) { return }
+          // if (searchResult && Math.abs(searchResult.item.ori.length - item.length) >= 20) { return }
           // 删除历史记录
           if (state.result.length >= 10) {
             state.result.shift()
@@ -244,27 +272,39 @@ const changeWorking = () => {
 const reload = () => {
   location.reload()
 }
+function ToCDB(str: string) {
+  var tmp = "";
+  for (var i = 0; i < str.length; i++) {
+    if (str.charCodeAt(i) > 65248 && str.charCodeAt(i) < 65375) {
+      tmp += String.fromCharCode(str.charCodeAt(i) - 65248);
+    } else {
+      tmp += String.fromCharCode(str.charCodeAt(i));
+    }
+  }
+  return tmp
+}
 </script>
 
 <template>
   <div class="drag"></div>
   <div v-if="!state.error" @click="changeWorking()" class="content">
-    <div v-if="!state.working">
+    <div v-if="!state.result.length">
       <p class="item">使用须知：</p>
       <p class="item">点击窗口任意位置开始运行，再次点击则停止运行</p>
       <p class="item">拖动窗口上方可调整窗口位置，拖动窗口四周可调整大小</p>
       <p class="item">可通过在窗口上方位置右击关闭本程序</p>
     </div>
-    <div class="translate" v-else>
+    <div class="translate">
       <p class="item" v-for="item in state.result">
         <p class="small-text">识别:{{item.ocr}}</p>
         <p v-if="item.ori" class="small-text">原文:{{item.ori}}</p>
         <p>{{item.trans}}</p>
       </p>
+      <p v-if="!state.working" class="item stop">当前已停止运行，再次点击继续</p>
     </div>
   </div>
   <div v-else @click="reload()" class="content">
-    <p>{{state.error}}</p>
+    <p class="item">{{state.error}}</p>
   </div>
 </template>
 
@@ -280,10 +320,10 @@ body {
 }
 body::-webkit-scrollbar {
   width: 10px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.3);
 }
 body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.6);
   border-radius: 100px;
   background-clip: padding-box;
   border: 2px solid hsla(0,0%,100%,0);
@@ -313,5 +353,10 @@ body::-webkit-scrollbar-thumb {
 .small-text {
   font-size: 0.75em;
   opacity: 0.8;
+}
+.stop {
+  position: fixed;
+  right: 0;
+  bottom: 0;
 }
 </style>
