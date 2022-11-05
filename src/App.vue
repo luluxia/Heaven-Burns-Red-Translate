@@ -9,6 +9,7 @@ const jsonfile = require('jsonfile')
 const screenshot = require('screenshot-desktop')
 const { windowManager } = require('node-window-manager')
 const cmd = require('node-cmd')
+const ini = require('ini')
 interface Result {
   ocr: string
   ori: string
@@ -32,77 +33,10 @@ const state: State = reactive({
   bounds: { x: 0, y: 0, width: 0, height: 0 },
   error: '',
 })
+const config = ini.parse(fs.readFileSync('config.ini', 'utf-8'))
+config.exclude = Object.keys(config.exclude)
 // 排除项
-const exclude: string[] = [
-  "手塚咲",
-  "茅森月歌",
-  "和泉ユキ",
-  "逢川めぐみ",
-  "逢川 めぐみ",
-  "東城つかさ",
-  "朝倉可憐",
-  "カレン",
-  "國見タマ",
-  "蒼井えりか",
-  "蒼井えリか",
-  "水瀬いちご",
-  "水瀬すもも",
-  "樋口聖華",
-  "柊木梢",
-  "ビャッコ",
-  "山脇・ボン・イヴァール",
-  "桜庭星羅",
-  "天音巫呼",
-  "豊後弥生",
-  "神崎アーデルハイド",
-  "佐月マリ",
-  "白河ユイナ",
-  "月城最中",
-  "桐生美也",
-  "菅原千恵",
-  "小笠原緋雨",
-  "蔵里見",
-  "二階堂三郷",
-  "石井色葉",
-  "命吹雪",
-  "室伏理沙",
-  "伊達朱里",
-  "瑞原あいな",
-  "大島一千子",
-  "大島二以奈",
-  "大島三野里",
-  "大島四ツ葉",
-  "大島五十鈴",
-  "大島六宇亜",
-  "柳美音",
-  "丸山奏多",
-  "華村詩紀",
-  "松岡チロル",
-  "夏目祈",
-  "黒沢真希",
-  "キャロル・リーパー",
-  "李映夏",
-  "アイリーン・レドメイン",
-  "ヴリティカ・バラクリシュナン",
-  "マリア・デ・アンジェリス",
-  "シャルロッタ・スコポフスカヤ",
-  "手塚咲",
-  "七瀬七海",
-  "浅見真紀子",
-  "話しかける",
-  "学園基地",
-  "学舎",
-  "宿舎",
-  "レレ",
-  "AUTO OFF",
-  "行く",
-  "行かない",
-  "次の時間へ",
-  "國見",
-  "レ",
-  "タマ",
-  "て「",
-]
+const exclude: string[] = config.exclude
 // 测试加密数据
 let textData = [] as string[]
 const resourcePath = path.resolve('./data')
@@ -120,7 +54,7 @@ fs.readdir(resourcePath, async (err: any, files: any) => {
     try {
       json = JSON.parse(decodedData)
     } catch (e) {
-      console.log('error' + file)
+      console.log('读取译文失败 ' + file)
     }
     textData = textData.concat(json)
     if (index === files.length - 1) {
@@ -150,7 +84,7 @@ let fuse: Fuse<any> | null = null
 const ready = () => {
   fuse = new Fuse(textData, {
     keys: ['ori'],
-    threshold: 0.5,
+    threshold: config.setting.threshold,
     distance: 20,
   })
 }
@@ -209,7 +143,7 @@ const takeScreenshot = () => {
       GPU: '-1'
     }
     const cmdText = Object.keys(cmdData).map(key => `--${key} ${cmdData[key]}`).join(' ')
-    cmd.run(`.\\ocr\\RapidOcrOnnx.exe ${cmdText}`,(err: any, data: any, stderr: any) => {
+    cmd.run(`.\\ocr\\RapidOcrOnnx_${config.setting.ocrVersion}.exe ${cmdText}`,(err: any, data: any, stderr: any) => {
       console.timeEnd('识别完成，耗时')
       let result = data.split('=====End detect=====')[1].split('\r\n').filter((item: string) => item != '')
       result.shift()
@@ -220,7 +154,7 @@ const takeScreenshot = () => {
       result = result.filter((item: string) => item.length > 2)
       // 跳过排除项
       result = result.filter((item: string) => !exclude.includes(item))
-      if (result.length >= 10 && state.result[state.result.length - 1]?.trans == 'OCR识别结果过多，因此跳过本次搜索') {
+      if (result.length >= config.setting.skimNum && state.result[state.result.length - 1]?.trans == 'OCR识别结果过多，因此跳过本次搜索') {
         state.result.push({
           ocr: '',
           ori: '',
@@ -239,14 +173,14 @@ const takeScreenshot = () => {
           console.log(search)
           const searchResult = search[0]
           // 跳过搜索结果为空的项
-          if (!search.length) { return }
+          if (!search.length || !config.setting.showFailed) { return }
           // 跳过当前历史记录中已存在的项
           if (searchResult && state.result.some((r: any) => r.trans != '' && r.trans === searchResult.item.trans)) { return }
           if (state.result.some((r: any) => r.ocr === item)) { return }
           // 排除原文与译文差距过大的项
           // if (searchResult && Math.abs(searchResult.item.ori.length - item.length) >= 20) { return }
           // 删除历史记录
-          if (state.result.length >= 10) {
+          if (state.result.length >= config.setting.maxShowNum) {
             state.result.shift()
           }
           pushItem.ori = searchResult?.item.ori
@@ -296,8 +230,8 @@ function ToCDB(str: string) {
     </div>
     <div class="translate">
       <p class="item" v-for="item in state.result">
-        <p class="small-text">识别:{{item.ocr}}</p>
-        <p v-if="item.ori" class="small-text">原文:{{item.ori}}</p>
+        <p v-if="config.setting.showOCR" class="small-text">识别:{{item.ocr}}</p>
+        <p v-if="item.ori && config.setting.showOriginal" class="small-text">原文:{{item.ori}}</p>
         <p>{{item.trans}}</p>
       </p>
       <p v-if="!state.working" class="item stop">当前已停止运行，再次点击继续</p>
