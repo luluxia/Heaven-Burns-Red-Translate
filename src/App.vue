@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { reactive, onMounted, nextTick } from 'vue'
 import Fuse from 'fuse.js'
-import { it } from 'node:test';
 const fs = require('fs')
 const path = require('path')
 const Jimp = require('jimp')
@@ -37,7 +36,7 @@ const config = ini.parse(fs.readFileSync('config.ini', 'utf-8'))
 config.exclude = Object.keys(config.exclude)
 // 排除项
 const exclude: string[] = config.exclude
-// 测试加密数据
+// 导入加密过的文本数据
 let textData = [] as string[]
 const resourcePath = path.resolve('./data')
 fs.readdir(resourcePath, async (err: any, files: any) => {
@@ -103,11 +102,12 @@ onMounted(async () => {
     return
   }
   console.log(target)
+  const ratio = config.setting.screenRatio
   state.bounds = {
-    x: bounds.x * 1.5,
-    y: bounds.y * 1.5,
-    width: bounds.width * 1.5,
-    height: bounds.height * 1.5
+    x: bounds.x * ratio,
+    y: bounds.y * ratio,
+    width: bounds.width * ratio,
+    height: bounds.height * ratio,
   }
 })
 // 截屏
@@ -143,7 +143,7 @@ const takeScreenshot = () => {
       GPU: '-1'
     }
     const cmdText = Object.keys(cmdData).map(key => `--${key} ${cmdData[key]}`).join(' ')
-    cmd.run(`.\\ocr\\RapidOcrOnnx_${config.setting.ocrVersion}.exe ${cmdText}`,(err: any, data: any, stderr: any) => {
+    cmd.run(`.\\ocr\\RapidOcrOnnx_${config.setting.ocrVersion}.exe ${cmdText}`,async (err: any, data: any, stderr: any) => {
       console.timeEnd('识别完成，耗时')
       let result = data.split('=====End detect=====')[1].split('\r\n').filter((item: string) => item != '')
       result.shift()
@@ -162,9 +162,10 @@ const takeScreenshot = () => {
         })
       } else {
         const merge = result.filter((item: string) => !exclude.includes(item)).join('')
+        let mergeSearchSuccess = false
         result.unshift(merge)
         result = [...new Set(result)]
-        result.forEach((item: string) => {
+        result.forEach((item: string, index: number) => {
           if (!fuse) { return }
           const pushItem = { ocr: item, ori: '', trans: '' }
           // 进行搜索
@@ -174,6 +175,8 @@ const takeScreenshot = () => {
           const searchResult = search[0]
           // 跳过搜索结果为空的项
           if (!search.length || !config.setting.showFailed) { return }
+          // 跳过合并项检测成功，且合并项中包含相同文本的项
+          if (mergeSearchSuccess && result[0].includes(item)) { return }
           // 跳过当前历史记录中已存在的项
           if (searchResult && state.result.some((r: any) => r.trans != '' && r.trans === searchResult.item.trans)) { return }
           if (state.result.some((r: any) => r.ocr === item)) { return }
@@ -186,6 +189,9 @@ const takeScreenshot = () => {
           pushItem.ori = searchResult?.item.ori
           pushItem.trans = searchResult?.item.trans
           state.result.push(pushItem)
+          if (search.length && index == 0) {
+            mergeSearchSuccess = true
+          }
           nextTick(() => { window.scrollTo(0, 9999) })
         })
       }
