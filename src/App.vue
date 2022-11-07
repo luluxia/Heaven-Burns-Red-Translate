@@ -163,25 +163,30 @@ const takeScreenshot = () => {
       } else {
         const merge = result.filter((item: string) => !exclude.includes(item)).join('')
         let mergeSearchSuccess = false
+        // 如果历史记录中已有该合并文本，且翻译结果不为空，则标记为搜索成功
+        if (state.result.find((item: any) => item.ocr == merge && item.trans)) {
+          mergeSearchSuccess = true
+        }
         result.unshift(merge)
         result = [...new Set(result)]
         result.forEach((item: string, index: number) => {
           if (!fuse) { return }
           const pushItem = { ocr: item, ori: '', trans: '' }
+          // 跳过历史记录中已有对应OCR识别结果的文本
+          if (state.result.some((r: any) => r.ocr != '' && r.ocr === item)) { return }
+          // 跳过合并项检测成功，且合并项中包含相同文本的项
+          if (mergeSearchSuccess && result[0].includes(item)) { return }
           // 进行搜索
           const search = fuse.search(item, { limit: 1 })
           console.log('搜寻 ' + item)
           console.log(search)
           const searchResult = search[0]
-          // 跳过搜索结果为空的项
-          if (!search.length || !config.setting.showFailed) { return }
-          // 跳过合并项检测成功，且合并项中包含相同文本的项
-          if (mergeSearchSuccess && result[0].includes(item)) { return }
-          // 跳过当前历史记录中已存在的项
+          // 跳过模糊搜索结果为空的项
+          if (!searchResult || !config.setting.showFailed) { return }
+          // 跳过当前历史记录中已存在对应译文的项
           if (searchResult && state.result.some((r: any) => r.trans != '' && r.trans === searchResult.item.trans)) { return }
-          if (state.result.some((r: any) => r.ocr === item)) { return }
-          // 排除原文与译文差距过大的项
-          // if (searchResult && Math.abs(searchResult.item.ori.length - item.length) >= 20) { return }
+          // 排除原文与译文差距过大的项（短OCR结果匹配了长译文）
+          if (searchResult && item.length <= 10 && Math.abs(searchResult.item.ori.length - item.length) >= 20) { return }
           // 删除历史记录
           if (state.result.length >= config.setting.maxShowNum) {
             state.result.shift()
@@ -189,7 +194,7 @@ const takeScreenshot = () => {
           pushItem.ori = searchResult?.item.ori
           pushItem.trans = searchResult?.item.trans
           state.result.push(pushItem)
-          if (search.length && index == 0) {
+          if (searchResult && index == 0) {
             mergeSearchSuccess = true
           }
           nextTick(() => { window.scrollTo(0, 9999) })
